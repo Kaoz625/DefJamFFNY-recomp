@@ -20,6 +20,16 @@ __attribute__((constructor)) static void defjam_ios_folders(void)
         if (!docs) return;
         const char *path = docs.fileSystemRepresentation;
         if (chdir(path) != 0) return;
+        {   /* An install from a page carries the game in the app bundle (Def Jam FFNY.app/game):
+             * point Documents/game at it unless the player put their own copy there. */
+            struct stat st;
+            NSString *bundled = [NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"game"];
+            if (stat("game/default.xbe", &st) != 0 &&
+                stat([bundled stringByAppendingPathComponent:@"default.xbe"].fileSystemRepresentation, &st) == 0) {
+                unlink("game");
+                symlink(bundled.fileSystemRepresentation, "game");
+            }
+        }
         if (!getenv("DEFJAM_DATA")) setenv("DEFJAM_DATA", path, 1);
         /* No keyboard player on a phone: the touch pad (or a real controller) is player 1. */
         setenv("RECOMP_KEYBOARD_PLAYER", "off", 0);
