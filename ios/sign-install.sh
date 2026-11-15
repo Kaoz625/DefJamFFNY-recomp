@@ -7,8 +7,15 @@ UDID=${1:-00008130-001A68443C2B803A}
 APP=build/ios/defjam_recomp.app
 TEAM=MNU46BX5M3
 BID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' $APP/Info.plist)
-PROFILE=${DEFJAM_IOS_PROFILE:-"$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/5ce2f268-ed9b-4e3e-a6d8-e0b3f6a6e1c4.mobileprovision"}
-[ -f "$PROFILE" ] || PROFILE=$(ls "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/"5ce2f268*.mobileprovision | head -1)
+# The newest team wildcard profile (MNU46BX5M3.*) that lists this device; Xcode regenerates them.
+PROFILE=${DEFJAM_IOS_PROFILE:-}
+if [ -z "$PROFILE" ]; then
+  while IFS= read -r f; do
+    x=$(security cms -D -i "$f" 2>/dev/null) || continue
+    echo "$x" | grep -q "<string>$TEAM\.\*</string>" && echo "$x" | grep -q "$UDID" && { PROFILE=$f; break; }
+  done < <(ls -t "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/"*.mobileprovision)
+fi
+[ -f "$PROFILE" ] || { echo "no wildcard profile for $UDID" >&2; exit 1; }
 IDENT=${DEFJAM_IOS_IDENTITY:-"Apple Development: Markus Useche (X6B36PP3R6)"}
 cp "$PROFILE" $APP/embedded.mobileprovision
 ENT=build/ios/entitlements.plist

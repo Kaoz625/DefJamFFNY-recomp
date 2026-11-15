@@ -186,6 +186,12 @@ static void make_window_main(void *arg)
         return;
     }
     refresh_drawable();
+#if defined(__APPLE__) && TARGET_OS_IOS
+    {   /* The touch controls over the game's view (src/host_ios.m). */
+        extern void host_ios_window_made(SDL_Window *window);
+        host_ios_window_made(s_window);
+    }
+#endif
 }
 
 typedef struct { void *instance; void *surface; int ok; } SurfaceRequest;
