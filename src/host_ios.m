@@ -21,6 +21,8 @@ __attribute__((constructor)) static void defjam_ios_folders(void)
         const char *path = docs.fileSystemRepresentation;
         if (chdir(path) != 0) return;
         if (!getenv("DEFJAM_DATA")) setenv("DEFJAM_DATA", path, 1);
+        /* No keyboard player on a phone: the touch pad (or a real controller) is player 1. */
+        setenv("RECOMP_KEYBOARD_PLAYER", "off", 0);
         /* Logs: Documents/logs/ios-<time>.log, readable with devicectl copy from. */
         mkdir("logs", 0755);
         if (!getenv("DEFJAM_IOS_CONSOLE")) {
@@ -223,24 +225,44 @@ static void vpad_stick(float x, float y)    /* -1..1 each */
 @end
 
 static DJTouchLayer *s_layer;
+static UIWindow *s_touch_window;
+
+/* The overlay's own window, above SDL's: it keeps the landscape orientations of the game. */
+@interface DJTouchController : UIViewController
+@end
+@implementation DJTouchController
+- (UIInterfaceOrientationMask)supportedInterfaceOrientations { return UIInterfaceOrientationMaskLandscape; }
+- (BOOL)prefersStatusBarHidden { return YES; }
+- (BOOL)prefersHomeIndicatorAutoHidden { return YES; }
+@end
 
 static void touch_layer_update_visibility(void)
 {
     BOOL real = NO;
     for (GCController *g in GCController.controllers)
         if (g.extendedGamepad) real = YES;
-    s_layer.hidden = real || getenv("DEFJAM_NO_TOUCH") != NULL;
+    BOOL hide = real || getenv("DEFJAM_NO_TOUCH") != NULL;
+    s_layer.hidden = hide;
+    s_touch_window.hidden = hide;      /* a hidden overlay window takes no touches */
 }
 
 void host_ios_window_made(SDL_Window *window)
 {
     UIWindow *w = (__bridge UIWindow *)SDL_GetPointerProperty(SDL_GetWindowProperties(window),
                                                             SDL_PROP_WINDOW_UIKIT_WINDOW_POINTER, NULL);
-    UIView *root = w.rootViewController.view;
-    if (!root) { fprintf(stderr, "[TOUCH] no UIKit view\n"); return; }
+    if (!w) { fprintf(stderr, "[TOUCH] no UIKit window\n"); return; }
     vpad_open();
-    s_layer = [[DJTouchLayer alloc] initWithFrame:root.bounds];
-    [root addSubview:s_layer];
+    DJTouchController *vc = [DJTouchController new];
+    s_layer = [[DJTouchLayer alloc] initWithFrame:w.bounds];
+    vc.view = s_layer;
+    s_touch_window = w.windowScene ? [[UIWindow alloc] initWithWindowScene:w.windowScene]
+                                   : [[UIWindow alloc] initWithFrame:w.bounds];
+    s_touch_window.windowLevel = UIWindowLevelNormal + 1;
+    s_touch_window.backgroundColor = UIColor.clearColor;
+    s_touch_window.opaque = NO;
+    s_touch_window.rootViewController = vc;
+    s_touch_window.hidden = NO;
+    [w makeKeyWindow];                 /* SDL's window keeps the keyboard and focus */
     touch_layer_update_visibility();
     [NSNotificationCenter.defaultCenter addObserverForName:GCControllerDidConnectNotification object:nil
         queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n) { touch_layer_update_visibility(); }];
