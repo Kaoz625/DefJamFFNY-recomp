@@ -89,6 +89,10 @@ endif()
 # toolkit's SDL3 is built for pads only (no video, rendering or dialogs). So the same pinned SDL3
 # release is made available here first, with those parts on; the toolkit's include then finds it
 # already there. Other Windows builds (the game, ci-runtime-only) keep the toolkit's SDL3 as it is.
+if(IOS)
+    # iOS (blz/ios): the game only, as an app bundle; no launcher app, setup or Steam.
+    set(DEFJAM_BUILD_APP OFF CACHE BOOL "" FORCE)
+endif()
 if(DEFJAM_SDL3)
     if(WIN32)
         option(DEFJAM_BUILD_APP "Build the game-free app (src/app)" OFF)
@@ -167,7 +171,10 @@ if(DEFJAM_BUILD_GAME)
         # in pc_ui.cpp; pc_launcher.cpp is the Direct3D 11 one.
         list(FILTER HOOK_SOURCES EXCLUDE REGEX "/(watchpoint\\.c|pc_launcher\\.cpp)$")
         set(HOST_SOURCES src/host_posix.c src/host_posix_keys.c)
-        if(APPLE)
+        if(IOS)
+            enable_language(OBJC)
+            list(APPEND HOST_SOURCES src/host_ios.m)
+        elseif(APPLE)
             enable_language(OBJC)
             list(APPEND HOST_SOURCES src/host_macos.m)
         endif()
@@ -192,7 +199,21 @@ if(DEFJAM_BUILD_GAME)
         defjam_app_icon(${PROJECT_NAME})
         target_link_libraries(${PROJECT_NAME} PRIVATE xboxrecomp recomp_settings defjam_imgui
                               SDL3::SDL3 Vulkan::Vulkan ${CMAKE_DL_LIBS} m)
-        if(APPLE)
+        if(IOS)
+            # MoltenVK is linked statically (Vulkan::Vulkan is its static library) and SDL3 is static.
+            target_link_libraries(${PROJECT_NAME} PRIVATE "-framework Foundation" "-framework UIKit"
+                "-framework Metal" "-framework QuartzCore" "-framework IOSurface" "-framework IOKit"
+                "-framework CoreGraphics" "-framework GameController" "-framework CoreHaptics"
+                "-framework CoreMotion" "-framework AVFoundation" "-framework AudioToolbox"
+                "-framework CoreAudio" "-framework CoreBluetooth" "-framework UniformTypeIdentifiers" c++)
+            set_target_properties(${PROJECT_NAME} PROPERTIES
+                MACOSX_BUNDLE ON
+                MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/ios/Info.plist.in"
+                MACOSX_BUNDLE_GUI_IDENTIFIER "com.nyctailblazers.defjam"
+                MACOSX_BUNDLE_BUNDLE_NAME "Def Jam"
+                MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+                MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}")
+        elseif(APPLE)
             # Shift held at start-up (src/host_posix.c) is read from the window server.
             target_link_libraries(${PROJECT_NAME} PRIVATE "-framework ApplicationServices" "-framework AppKit")
             # SDL opens the Vulkan loader by name, and macOS's search does not
